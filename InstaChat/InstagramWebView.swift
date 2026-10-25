@@ -9,10 +9,8 @@ import AppKit
 typealias PlatformViewRepresentable = NSViewRepresentable
 #endif
 
-/// A dedicated WKWebView container for Instagram direct messaging.
+/// A dedicated WKWebView container for Instagram Direct Inbox.
 struct InstagramWebView: PlatformViewRepresentable {
-    let targetURL: URL
-    let threadId: String
     @Binding var isLoading: Bool
     @Binding var progress: Double
     @Binding var reloadTrigger: Bool
@@ -24,7 +22,7 @@ struct InstagramWebView: PlatformViewRepresentable {
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {
-        context.coordinator.update(webView: uiView, targetURL: targetURL, reloadTrigger: $reloadTrigger)
+        context.coordinator.update(webView: uiView, reloadTrigger: $reloadTrigger)
     }
     #endif
 
@@ -35,7 +33,7 @@ struct InstagramWebView: PlatformViewRepresentable {
     }
 
     func updateNSView(_ nsView: WKWebView, context: Context) {
-        context.coordinator.update(webView: nsView, targetURL: targetURL, reloadTrigger: $reloadTrigger)
+        context.coordinator.update(webView: nsView, reloadTrigger: $reloadTrigger)
     }
     #endif
 
@@ -48,7 +46,6 @@ struct InstagramWebView: PlatformViewRepresentable {
         let parent: InstagramWebView
         private var webView: WKWebView?
         private var progressObservation: NSKeyValueObservation?
-        private var lastLoadedURL: URL?
 
         init(_ parent: InstagramWebView) {
             self.parent = parent
@@ -87,27 +84,18 @@ struct InstagramWebView: PlatformViewRepresentable {
             }
 
             self.webView = webView
-            let request = URLRequest(url: parent.targetURL)
-            lastLoadedURL = parent.targetURL
+            let request = URLRequest(url: DirectChatConfig.inboxURL)
             webView.load(request)
 
             return webView
         }
 
-        func update(webView: WKWebView, targetURL: URL, reloadTrigger: Binding<Bool>) {
+        func update(webView: WKWebView, reloadTrigger: Binding<Bool>) {
             if reloadTrigger.wrappedValue {
                 DispatchQueue.main.async {
                     reloadTrigger.wrappedValue = false
                 }
                 webView.reload()
-                return
-            }
-
-            // If the configured target thread URL changed, load the new thread
-            if lastLoadedURL != targetURL {
-                lastLoadedURL = targetURL
-                let request = URLRequest(url: targetURL)
-                webView.load(request)
             }
         }
 
@@ -158,8 +146,8 @@ struct InstagramWebView: PlatformViewRepresentable {
                 return
             }
 
-            // 3. Allow direct thread conversation
-            if urlString.contains("/direct/t/\(parent.threadId.lowercased())") {
+            // 3. Allow all Direct Messaging (inbox, threads, requests)
+            if urlString.contains("/direct/") {
                 decisionHandler(.allow)
                 return
             }
@@ -169,8 +157,8 @@ struct InstagramWebView: PlatformViewRepresentable {
                urlString.contains("/explore/") ||
                (urlString == "https://www.instagram.com/" || urlString == "https://instagram.com/") {
                 decisionHandler(.cancel)
-                // Redirect user back to the pinned thread
-                let request = URLRequest(url: parent.targetURL)
+                // Redirect back to Direct Inbox
+                let request = URLRequest(url: DirectChatConfig.inboxURL)
                 webView.load(request)
                 return
             }
