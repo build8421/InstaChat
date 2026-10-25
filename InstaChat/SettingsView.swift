@@ -52,6 +52,23 @@ struct SettingsView: View {
                     .padding(.vertical, 4)
                 }
 
+                Section("Notifications") {
+                    Button(action: {
+                        NotificationManager.shared.requestPermission()
+                    }) {
+                        Label("Enable / Check Permissions", systemImage: "bell.badge")
+                    }
+
+                    Button(action: {
+                        NotificationManager.shared.scheduleNotification(
+                            title: "InstaChat Notification",
+                            body: "Notifications are working properly! 🎉"
+                        )
+                    }) {
+                        Label("Send Test Notification", systemImage: "bell")
+                    }
+                }
+
                 Section("Session") {
                     Button(role: .destructive, action: { showingLogoutConfirmation = true }) {
                         Label("Log Out / Clear Instagram Session", systemImage: "rectangle.portrait.and.arrow.right")

@@ -44,7 +44,7 @@ struct InstagramWebView: PlatformViewRepresentable {
     }
 
     // MARK: - Coordinator
-    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         let parent: InstagramWebView
         private var webView: WKWebView?
         private var progressObservation: NSKeyValueObservation?
@@ -57,20 +57,26 @@ struct InstagramWebView: PlatformViewRepresentable {
 
         deinit {
             progressObservation?.invalidate()
+            webView?.configuration.userContentController.removeScriptMessageHandler(forName: "incomingMessageBridge")
         }
 
         func makeWebView() -> WKWebView {
             let configuration = WKWebViewConfiguration()
             configuration.websiteDataStore = WKWebsiteDataStore.default()
-            configuration.userContentController.addUserScript(DistractionFreeScripts.makeUserScript())
             configuration.allowsInlineMediaPlayback = true
+
+            // Add notification shim at document start and DOM scripts at document end
+            let userContentController = configuration.userContentController
+            userContentController.addUserScript(DistractionFreeScripts.makeNotificationShimScript())
+            userContentController.addUserScript(DistractionFreeScripts.makeUserScript())
+            userContentController.add(ScriptMessageHandlerWeakProxy(self), name: "incomingMessageBridge")
 
             let webView = WKWebView(frame: .zero, configuration: configuration)
             webView.navigationDelegate = self
             webView.uiDelegate = self
             webView.allowsBackForwardNavigationGestures = true
 
-            // Set clean modern mobile Safari user agent to ensure Instagram loads the mobile direct UI smoothly
+            // Set clean modern mobile Safari user agent
             webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
 
             // Track loading progress
@@ -103,6 +109,18 @@ struct InstagramWebView: PlatformViewRepresentable {
                 let request = URLRequest(url: targetURL)
                 webView.load(request)
             }
+        }
+
+        // MARK: - WKScriptMessageHandler
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.name == "incomingMessageBridge",
+                  let dict = message.body as? [String: Any] else { return }
+
+            let title = dict["title"] as? String ?? "Instagram"
+            let body = dict["body"] as? String ?? ""
+
+            NotificationManager.shared.scheduleNotification(title: title, body: body)
         }
 
         // MARK: - WKNavigationDelegate Lockdown
@@ -212,5 +230,18 @@ struct InstagramWebView: PlatformViewRepresentable {
             }
             return nil
         }
+    }
+}
+
+/// A weak proxy to prevent retain cycles between WKUserContentController and Coordinator.
+private final class ScriptMessageHandlerWeakProxy: NSObject, WKScriptMessageHandler {
+    private weak var handler: WKScriptMessageHandler?
+
+    init(_ handler: WKScriptMessageHandler) {
+        self.handler = handler
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        handler?.userContentController(userContentController, didReceive: message)
     }
 }

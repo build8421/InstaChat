@@ -1,7 +1,8 @@
 import Foundation
 import WebKit
 
-/// Provides custom CSS and JavaScript to strip away feeds, reels, banners, and explore tabs.
+/// Provides custom CSS and JavaScript to strip away feeds, reels, banners, and explore tabs,
+/// as well as hooking incoming messages for native iOS notifications.
 enum DistractionFreeScripts {
     
     /// Custom CSS rules injected at document end.
@@ -60,44 +61,125 @@ enum DistractionFreeScripts {
     }
     """
     
-    /// JavaScript that injects the CSS styles and continuously cleans distracting elements.
+    /// Early script injected at document start to hook HTML5 Web Notifications.
+    static let notificationShimJS: String = """
+    (function() {
+        if (window.__instaChatShimInjected) return;
+        window.__instaChatShimInjected = true;
+
+        function CustomNotification(title, options) {
+            try {
+                var bodyText = (options && options.body) ? options.body : "";
+                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.incomingMessageBridge) {
+                    window.webkit.messageHandlers.incomingMessageBridge.postMessage({
+                        title: title || "Instagram Message",
+                        body: bodyText
+                    });
+                }
+            } catch (e) {}
+        }
+
+        CustomNotification.permission = "granted";
+        CustomNotification.requestPermission = function(callback) {
+            if (callback) callback("granted");
+            return Promise.resolve("granted");
+        };
+
+        window.Notification = CustomNotification;
+    })();
+    """
+
+    /// Main script injected at document end for DOM cleaning and incoming message detection.
     static let injectionJS: String = """
     (function() {
-        // Inject CSS
+        // 1. Inject CSS
         const style = document.createElement('style');
         style.type = 'text/css';
         style.innerHTML = `\(customCSS)`;
         document.head.appendChild(style);
 
-        // Continuous DOM observer to dismiss banners and popups
+        // 2. Dismiss prompts and clean banned links
         function cleanDOM() {
-            // Dismiss 'Turn on Notifications' or 'Open in App' dialogs
             const buttons = document.querySelectorAll('button');
             buttons.forEach(btn => {
                 const text = (btn.innerText || '').toLowerCase();
                 if (text.includes('not now') || text.includes('cancel')) {
-                    // Auto-dismiss the prompt
                     btn.click();
                 }
             });
 
-            // Remove any explore or reel links that dynamically attach
             const bannedLinks = document.querySelectorAll('a[href="/explore/"], a[href="/reels/"], a[href="/"]');
             bannedLinks.forEach(link => {
                 link.style.display = 'none';
             });
         }
 
-        // Run once on load
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', cleanDOM);
-        } else {
-            cleanDOM();
+        // 3. Incoming message observer
+        var seenMessages = new Set();
+        var isInitialScanDone = false;
+
+        function scanIncomingMessages() {
+            var textNodes = document.querySelectorAll('div[dir="auto"], span[dir="auto"]');
+            textNodes.forEach(function(node) {
+                var text = (node.innerText || '').trim();
+                if (!text || text.length === 0) return;
+                
+                // Exclude system labels
+                if (text === 'Seen' || text === 'Sent' || text.startsWith('Active ') || text === 'InstaChat') return;
+
+                // Determine if this bubble belongs to an outgoing message
+                var isOutgoing = false;
+                var curr = node;
+                while (curr && curr !== document.body) {
+                    var style = window.getComputedStyle(curr);
+                    if (style.alignSelf === 'flex-end' || style.justifyContent === 'flex-end') {
+                        isOutgoing = true;
+                        break;
+                    }
+                    curr = curr.parentElement;
+                }
+
+                var key = text;
+                if (!seenMessages.has(key)) {
+                    seenMessages.add(key);
+                    // Only dispatch notification for new incoming messages after initial thread load
+                    if (isInitialScanDone && !isOutgoing) {
+                        try {
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.incomingMessageBridge) {
+                                window.webkit.messageHandlers.incomingMessageBridge.postMessage({
+                                    title: "Instagram",
+                                    body: text
+                                });
+                            }
+                        } catch (err) {}
+                    }
+                }
+            });
         }
 
-        // Monitor DOM mutations
-        const observer = new MutationObserver(() => {
+        // Mark pre-existing messages as seen after 3 seconds
+        setTimeout(function() {
+            scanIncomingMessages();
+            isInitialScanDone = true;
+        }, 3000);
+
+        // Run once on load
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                cleanDOM();
+                scanIncomingMessages();
+            });
+        } else {
             cleanDOM();
+            scanIncomingMessages();
+        }
+
+        // Monitor DOM mutations continuously
+        const observer = new MutationObserver(function() {
+            cleanDOM();
+            if (isInitialScanDone) {
+                scanIncomingMessages();
+            }
         });
 
         observer.observe(document.body || document.documentElement, {
@@ -107,7 +189,16 @@ enum DistractionFreeScripts {
     })();
     """
     
-    /// Creates a WKUserScript ready to be added to WKUserContentController.
+    /// Script for hooking notification APIs at start of document loading.
+    static func makeNotificationShimScript() -> WKUserScript {
+        return WKUserScript(
+            source: notificationShimJS,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        )
+    }
+
+    /// Script for DOM cleaning and chat observer injected at document end.
     static func makeUserScript() -> WKUserScript {
         return WKUserScript(
             source: injectionJS,
