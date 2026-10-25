@@ -46,32 +46,32 @@ An intentional, distraction-free iOS app built with SwiftUI that connects **excl
 
 ---
 
-## 📋 Implementation Roadmap / TODO
+## 📋 Implementation Roadmap / Status
 
 ### Phase 1: Core Web Container & Configuration
-- [ ] Create `DirectChatConfig.swift`:
+- [x] Create `DirectChatConfig.swift`:
   - Store `threadId` or target direct URL using `@AppStorage` / `UserDefaults`.
   - Provide a fallback setup view if no thread ID is configured yet.
-- [ ] Create `InstagramWebView.swift` (`UIViewRepresentable`):
+- [x] Create `InstagramWebView.swift` (`UIViewRepresentable`):
   - Configure `WKWebViewConfiguration` with `WKWebsiteDataStore.default()`.
   - Set modern Mobile Safari `customUserAgent` to prevent Instagram from displaying unsupported browser warnings.
 
 ### Phase 2: Distraction-Free Script Injection
-- [ ] Implement `WKUserScript` with custom CSS injected at `document_end`:
+- [x] Implement `WKUserScript` with custom CSS injected at `document_end`:
   - Hide bottom navigation bar (`div[role="tablist"]`, `svg[aria-label="Home"]`, etc.).
   - Hide explore / reels / notification icons.
   - Hide sidebar conversation list (focus strictly on active chat).
-- [ ] Implement DOM observer script to continuously ensure newly hydrated elements (like popups, reel recommendations, or "Get App" banners) remain hidden.
+- [x] Implement DOM observer script to continuously ensure newly hydrated elements (like popups, reel recommendations, or "Get App" banners) remain hidden.
 
 ### Phase 3: Navigation Lockdown
-- [ ] Implement `WKNavigationDelegate`:
+- [x] Implement `WKNavigationDelegate`:
   - Allow login & authentication endpoints (`instagram.com/accounts/*`).
   - Allow target thread URL (`instagram.com/direct/t/<thread_id>/*`).
   - Block `/reels/*`, `/explore/*`, and root `/`.
   - Handle back-navigation so tapping back always returns to the configured chat thread.
 
 ### Phase 4: UI & Polish
-- [ ] Update `ContentView.swift`:
+- [x] Update `ContentView.swift`:
   - Show a simple setup sheet on first launch to paste the Thread ID / URL.
   - Show a small, subtle settings button to reconfigure the Thread ID if needed.
   - Add native loading indicator / offline state handling.
