@@ -1,8 +1,8 @@
 import Foundation
 import WebKit
 
-/// Provides custom CSS and JavaScript to strip away feeds, reels, banners, and explore tabs,
-/// as well as hooking incoming messages for native iOS notifications.
+/// Provides custom CSS and JavaScript to strip away feeds, reels, banners, explore tabs,
+/// and activity/heart notifications, keeping the experience strictly direct-messaging only.
 enum DistractionFreeScripts {
     
     /// Custom CSS rules injected at document end.
@@ -17,10 +17,12 @@ enum DistractionFreeScripts {
         pointer-events: none !important;
     }
 
-    /* Hide top header branding, explore icon, notifications */
+    /* Hide home feed, explore, reels, and heart/activity notifications */
     a[href="/reels/"],
     a[href="/explore/"],
     a[href="/"],
+    a[href*="/notifications"],
+    a[href*="/activity"],
     a[aria-label="Home"],
     a[aria-label="Search"],
     a[aria-label="Explore"],
@@ -30,6 +32,7 @@ enum DistractionFreeScripts {
     svg[aria-label="Search"],
     svg[aria-label="Explore"],
     svg[aria-label="Reels"],
+    svg[aria-label="Notifications"],
     svg[aria-label="Activity Feed"] {
         display: none !important;
     }
@@ -45,7 +48,7 @@ enum DistractionFreeScripts {
         height: 0 !important;
     }
 
-    /* Ensure the chat container takes the full height of the viewport */
+    /* Ensure container takes full height */
     html, body {
         height: 100% !important;
         width: 100% !important;
@@ -60,7 +63,7 @@ enum DistractionFreeScripts {
     }
     """
     
-    /// Early script injected at document start to hook HTML5 Web Notifications.
+    /// Early script injected at document start to hook HTML5 Web Notifications for real-time messages.
     static let notificationShimJS: String = """
     (function() {
         if (window.__instaChatShimInjected) return;
@@ -88,7 +91,7 @@ enum DistractionFreeScripts {
     })();
     """
 
-    /// Main script injected at document end for DOM cleaning and incoming message detection.
+    /// Main script injected at document end for DOM cleaning.
     static let injectionJS: String = """
     (function() {
         // 1. Inject CSS
@@ -97,103 +100,32 @@ enum DistractionFreeScripts {
         style.innerHTML = `\(customCSS)`;
         document.head.appendChild(style);
 
-        // 2. Dismiss prompts and clean banned links
+        // 2. Clean DOM and handle page states
         function cleanDOM() {
-            // Do not alter or click buttons on login or accounts verification pages
             var path = (window.location.pathname || '').toLowerCase();
+            // Preserve full rendering on login and verification pages
             if (path.includes('/accounts/') || path.includes('/login') || path.includes('/challenge/')) {
                 document.body.classList.add('auth-page');
-                return;
             } else {
                 document.body.classList.remove('auth-page');
             }
 
-            // Dismiss 'Turn on Notifications' modal dialogs
-            const buttons = document.querySelectorAll('button');
-            buttons.forEach(btn => {
-                const text = (btn.innerText || '').toLowerCase().trim();
-                if (text === 'not now') {
-                    btn.click();
-                }
-            });
-
-            // Suppress explore/reels/home anchors
-            const bannedLinks = document.querySelectorAll('a[href="/explore/"], a[href="/reels/"], a[href="/"]');
+            // Suppress explore/reels/home/activity anchors
+            const bannedLinks = document.querySelectorAll('a[href="/explore/"], a[href="/reels/"], a[href="/"], a[href*="/notifications"], a[href*="/activity"]');
             bannedLinks.forEach(link => {
                 link.style.display = 'none';
             });
         }
 
-        // 3. Incoming message observer
-        var seenMessages = new Set();
-        var isInitialScanDone = false;
-
-        function scanIncomingMessages() {
-            try {
-                var textNodes = document.querySelectorAll('div[dir="auto"], span[dir="auto"]');
-                textNodes.forEach(function(node) {
-                    var text = (node.innerText || '').trim();
-                    if (!text || text.length === 0) return;
-                    
-                    // Exclude system labels
-                    if (text === 'Seen' || text === 'Sent' || text.startsWith('Active ') || text === 'InstaChat') return;
-
-                    // Determine if this bubble belongs to an outgoing message
-                    var isOutgoing = false;
-                    var curr = node;
-                    while (curr && curr !== document.body) {
-                        var style = window.getComputedStyle(curr);
-                        if (style && (style.alignSelf === 'flex-end' || style.justifyContent === 'flex-end')) {
-                            isOutgoing = true;
-                            break;
-                        }
-                        curr = curr.parentElement;
-                    }
-
-                    var key = text;
-                    if (!seenMessages.has(key)) {
-                        seenMessages.add(key);
-                        // Only dispatch notification for new incoming messages after initial thread load
-                        if (isInitialScanDone && !isOutgoing) {
-                            try {
-                                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.incomingMessageBridge) {
-                                    window.webkit.messageHandlers.incomingMessageBridge.postMessage({
-                                        title: "Instagram",
-                                        body: text
-                                    });
-                                }
-                            } catch (err) {}
-                        }
-                    }
-                });
-            } catch (e) {}
-        }
-
-        // Mark pre-existing messages as seen after 3 seconds
-        setTimeout(function() {
-            scanIncomingMessages();
-            isInitialScanDone = true;
-        }, 3000);
-
-        // Run once on load
+        // Run on load
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', function() {
-                cleanDOM();
-                scanIncomingMessages();
-            });
+            document.addEventListener('DOMContentLoaded', cleanDOM);
         } else {
             cleanDOM();
-            scanIncomingMessages();
         }
 
-        // Monitor DOM mutations continuously
-        const observer = new MutationObserver(function() {
-            cleanDOM();
-            if (isInitialScanDone) {
-                scanIncomingMessages();
-            }
-        });
-
+        // Monitor DOM mutations
+        const observer = new MutationObserver(cleanDOM);
         observer.observe(document.body || document.documentElement, {
             childList: true,
             subtree: true
@@ -210,7 +142,7 @@ enum DistractionFreeScripts {
         )
     }
 
-    /// Script for DOM cleaning and chat observer injected at document end.
+    /// Script for DOM cleaning injected at document end.
     static func makeUserScript() -> WKUserScript {
         return WKUserScript(
             source: injectionJS,

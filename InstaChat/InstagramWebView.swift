@@ -152,9 +152,11 @@ struct InstagramWebView: PlatformViewRepresentable {
                 return
             }
 
-            // 4. Block Instagram Feeds, Reels, and Explore pages
+            // 4. Block Instagram Feeds, Reels, Explore, and Activity/Notification pages
             if urlString.contains("/reels/") ||
                urlString.contains("/explore/") ||
+               urlString.contains("/notifications") ||
+               urlString.contains("/activity") ||
                (urlString == "https://www.instagram.com/" || urlString == "https://instagram.com/") {
                 decisionHandler(.cancel)
                 // Redirect back to Direct Inbox
@@ -183,7 +185,7 @@ struct InstagramWebView: PlatformViewRepresentable {
                 }
             }
 
-            // Default: allow remaining direct chat navigation (e.g. media viewer in thread)
+            // Default: allow remaining direct chat navigation
             decisionHandler(.allow)
         }
 
