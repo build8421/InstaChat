@@ -1,0 +1,37 @@
+# Xcode
+#
+# gitignore template for Xcode programs
+# Website: https://github.com/github/gitignore/blob/main/Swift.gitignore
+
+build/
+DerivedData/
+*.moved-aside
+*.xcuserstate
+
+## User-specific files
+xcuserdata/
+
+## Compatibility with Xcode 3 and earlier (retain tracking for Xcode 4+)
+*.xcscmblueprint
+*.xccheckout
+
+## Swift Package Manager
+.build/
+Packages/
+Package.pins
+Package.resolved
+*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+.swiftpm/xcode
+
+## Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
