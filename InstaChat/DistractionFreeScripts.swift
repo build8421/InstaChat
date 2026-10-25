@@ -63,12 +63,13 @@ enum DistractionFreeScripts {
     }
     """
     
-    /// Early script injected at document start to hook HTML5 Web Notifications for real-time messages.
+    /// Early script injected at document start to hook HTML5 Web Notifications and intercept root inbox back navigation.
     static let notificationShimJS: String = """
     (function() {
         if (window.__instaChatShimInjected) return;
         window.__instaChatShimInjected = true;
 
+        // 1. Hook HTML5 Web Notifications for real-time messages
         function CustomNotification(title, options) {
             try {
                 var bodyText = (options && options.body) ? options.body : "";
@@ -88,6 +89,42 @@ enum DistractionFreeScripts {
         };
 
         window.Notification = CustomNotification;
+
+        // 2. Intercept clicks and touches on the top-left back button when at Direct Inbox
+        function swallowInboxBack(e) {
+            try {
+                var path = (window.location.pathname || '').toLowerCase();
+                // Allow back button inside conversation threads to return to inbox
+                if (path.includes('/direct/t/')) return;
+                if (!path.includes('/direct')) return;
+
+                var target = e.target;
+                if (!target) return;
+
+                var btn = target.closest ? target.closest('button, [role="button"], a, header > div') : null;
+                var isTopLeft = false;
+                if (btn) {
+                    var rect = btn.getBoundingClientRect();
+                    if (rect.top >= 0 && rect.top < 65 && rect.left >= 0 && rect.left < 85) {
+                        isTopLeft = true;
+                    }
+                }
+
+                var isBackElement = (btn && (
+                    btn.matches('a[href="/"], [aria-label*="Back" i], [aria-label*="Chevron" i]') ||
+                    btn.querySelector('[aria-label*="Back" i], [aria-label*="Chevron" i], a[href="/"]')
+                )) || (target.closest && target.closest('[aria-label*="Back" i], [aria-label*="Chevron" i]'));
+
+                if (isTopLeft || isBackElement) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                }
+            } catch (err) {}
+        }
+
+        document.addEventListener('click', swallowInboxBack, true);
+        document.addEventListener('touchend', swallowInboxBack, true);
     })();
     """
 
