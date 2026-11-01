@@ -13,6 +13,7 @@ struct InstagramWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {
+        context.coordinator.parent = self
         context.coordinator.update(webView: uiView, reloadTrigger: $reloadTrigger)
     }
 
@@ -22,7 +23,7 @@ struct InstagramWebView: UIViewRepresentable {
 
     // MARK: - Coordinator
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
-        let parent: InstagramWebView
+        var parent: InstagramWebView
         private var webView: WKWebView?
         private var progressObservation: NSKeyValueObservation?
 
@@ -98,56 +99,22 @@ struct InstagramWebView: UIViewRepresentable {
                 return
             }
 
-            let scheme = url.scheme?.lowercased() ?? ""
             let urlString = url.absoluteString.lowercased()
             let host = url.host?.lowercased() ?? ""
 
-            print("[InstaChat WebRequest] \(navigationAction.request.url?.absoluteString ?? "")")
-
-            // 1. Allow internal browser schemes (about:blank, blob:, data:, javascript:)
-            if scheme == "about" || scheme == "blob" || scheme == "data" || scheme == "javascript" {
-                decisionHandler(.allow)
-                return
-            }
-
-            // 2. Allow login, 2FA, Meta/Facebook login-sync, Accounts Center, and static asset CDNs
-            if urlString.contains("/accounts/") ||
-               urlString.contains("/oauth/") ||
-               urlString.contains("/challenge/") ||
-               urlString.contains("/two_factor/") ||
-               urlString.contains("/login") ||
-               urlString.contains("/consent/") ||
-               urlString.contains("/checkpoint/") ||
-               host.contains("facebook.com") ||
-               host.contains("meta.com") ||
-               host.contains("accountscenter") ||
-               host.contains("cdninstagram.com") ||
-               host.contains("fbcdn.net") {
-                decisionHandler(.allow)
-                return
-            }
-
-            // 3. Allow all Direct Messaging (inbox, threads, requests)
-            if urlString.contains("/direct/") {
-                decisionHandler(.allow)
-                return
-            }
-
-            // 4. Block Instagram Feeds, Reels, Explore, and Activity/Notification pages
+            // 1. Block feeds, explore, reels, and notification feeds -> redirect back to Direct Inbox
             if urlString.contains("/reels/") ||
                urlString.contains("/explore/") ||
                urlString.contains("/notifications") ||
                urlString.contains("/activity") ||
                urlString == "https://www.instagram.com/" {
                 decisionHandler(.cancel)
-                // Redirect back to Direct Inbox
-                let request = URLRequest(url: DirectChatConfig.inboxURL)
-                webView.load(request)
+                webView.load(URLRequest(url: DirectChatConfig.inboxURL))
                 return
             }
 
-            // 5. Handle external web links clicked by user inside DMs (open in external browser)
-            if scheme == "http" || scheme == "https" {
+            // 2. Open external non-Meta links in default mobile browser
+            if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
                 let isMetaDomain = host.contains("instagram.com") ||
                                    host.contains("facebook.com") ||
                                    host.contains("meta.com") ||
@@ -162,7 +129,7 @@ struct InstagramWebView: UIViewRepresentable {
                 }
             }
 
-            // Default: allow remaining direct chat navigation
+            // 3. Allow everything else (direct messaging, auth/2FA, static assets, internal schemes)
             decisionHandler(.allow)
         }
 
@@ -175,9 +142,6 @@ struct InstagramWebView: UIViewRepresentable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             DispatchQueue.main.async {
                 self.parent.isLoading = false
-            }
-            if let currentURL = webView.url?.absoluteString {
-                print("[InstaChat PageLoaded] \(currentURL)")
             }
         }
 
@@ -193,7 +157,7 @@ struct InstagramWebView: UIViewRepresentable {
             }
         }
 
-        // Support window.open / popups inside the same view
+        // Support target="_blank" / popups by routing them through the main navigation flow
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
             if navigationAction.targetFrame == nil {
                 webView.load(navigationAction.request)
