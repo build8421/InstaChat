@@ -1,41 +1,20 @@
 import SwiftUI
 import WebKit
-
-#if canImport(UIKit)
 import UIKit
-typealias PlatformViewRepresentable = UIViewRepresentable
-#elseif canImport(AppKit)
-import AppKit
-typealias PlatformViewRepresentable = NSViewRepresentable
-#endif
 
 /// A dedicated WKWebView container for Instagram Direct Inbox.
-struct InstagramWebView: PlatformViewRepresentable {
+struct InstagramWebView: UIViewRepresentable {
     @Binding var isLoading: Bool
     @Binding var progress: Double
     @Binding var reloadTrigger: Bool
 
-    // MARK: - UIViewRepresentable (iOS / iPadOS / visionOS)
-    #if canImport(UIKit)
     func makeUIView(context: Context) -> WKWebView {
-        return context.coordinator.makeWebView()
+        context.coordinator.makeWebView()
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {
         context.coordinator.update(webView: uiView, reloadTrigger: $reloadTrigger)
     }
-    #endif
-
-    // MARK: - NSViewRepresentable (macOS Native)
-    #if canImport(AppKit) && !canImport(UIKit)
-    func makeNSView(context: Context) -> WKWebView {
-        return context.coordinator.makeWebView()
-    }
-
-    func updateNSView(_ nsView: WKWebView, context: Context) {
-        context.coordinator.update(webView: nsView, reloadTrigger: $reloadTrigger)
-    }
-    #endif
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -123,6 +102,8 @@ struct InstagramWebView: PlatformViewRepresentable {
             let urlString = url.absoluteString.lowercased()
             let host = url.host?.lowercased() ?? ""
 
+            print("[InstaChat WebRequest] \(navigationAction.request.url?.absoluteString ?? "")")
+
             // 1. Allow internal browser schemes (about:blank, blob:, data:, javascript:)
             if scheme == "about" || scheme == "blob" || scheme == "data" || scheme == "javascript" {
                 decisionHandler(.allow)
@@ -157,7 +138,7 @@ struct InstagramWebView: PlatformViewRepresentable {
                urlString.contains("/explore/") ||
                urlString.contains("/notifications") ||
                urlString.contains("/activity") ||
-               (urlString == "https://www.instagram.com/" || urlString == "https://instagram.com/") {
+               urlString == "https://www.instagram.com/" {
                 decisionHandler(.cancel)
                 // Redirect back to Direct Inbox
                 let request = URLRequest(url: DirectChatConfig.inboxURL)
@@ -176,11 +157,7 @@ struct InstagramWebView: PlatformViewRepresentable {
 
                 if !isMetaDomain {
                     decisionHandler(.cancel)
-                    #if canImport(UIKit)
                     UIApplication.shared.open(url)
-                    #elseif canImport(AppKit)
-                    NSWorkspace.shared.open(url)
-                    #endif
                     return
                 }
             }
@@ -198,6 +175,9 @@ struct InstagramWebView: PlatformViewRepresentable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             DispatchQueue.main.async {
                 self.parent.isLoading = false
+            }
+            if let currentURL = webView.url?.absoluteString {
+                print("[InstaChat PageLoaded] \(currentURL)")
             }
         }
 

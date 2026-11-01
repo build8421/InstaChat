@@ -53,9 +53,7 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
-            #if canImport(UIKit)
             .navigationBarTitleDisplayMode(.inline)
-            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") {

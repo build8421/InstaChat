@@ -1,8 +1,6 @@
 import Foundation
 import UserNotifications
-#if canImport(UIKit)
 import UIKit
-#endif
 
 /// Manages native iOS local notifications for incoming chat messages.
 final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
@@ -66,13 +64,11 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             }
         }
 
-        #if canImport(UIKit)
         DispatchQueue.main.async {
             let generator = UINotificationFeedbackGenerator()
             generator.prepare()
             generator.notificationOccurred(.success)
         }
-        #endif
     }
 
     // MARK: - UNUserNotificationCenterDelegate
@@ -83,10 +79,6 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        #if canImport(UIKit)
         completionHandler([.banner, .sound, .badge, .list])
-        #else
-        completionHandler([.sound, .badge])
-        #endif
     }
 }
